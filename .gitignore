@@ -1,0 +1,42 @@
+
+# Python virtual environments
+.venv/
+venv/
+env/
+backend/.venv/
+
+# Python generated files
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Test and coverage output
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs and local databases
+*.log
+*.sqlite
+*.sqlite3
+*.db
+
+# React / Node dependencies
+node_modules/
+frontend/node_modules/
+
+# Vite build output
+dist/
+frontend/dist/
+
+# Local editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
