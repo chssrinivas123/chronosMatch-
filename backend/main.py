@@ -51,16 +51,9 @@ def get_order_book():
 
 @app.get("/api/trades")
 def get_trades():
-    return [trade.model_dump() for trade in reversed(order_book.trades)]
+    return [trade.model_dump() for trade in order_book.trades_snapshot()]
 
 
 @app.get("/api/metrics")
 def get_metrics():
-    snapshot = order_book.snapshot()
-    return {
-        "processed_orders": snapshot["processed_orders"],
-        "trade_count": snapshot["trade_count"],
-        "best_bid": snapshot["best_bid"],
-        "best_ask": snapshot["best_ask"],
-        "spread": snapshot["spread"],
-    }
+    return order_book.dashboard_metrics()

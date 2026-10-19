@@ -120,7 +120,7 @@ function formatPrice(value) {
   return value == null ? "—" : Number(value).toLocaleString();
 }
 
-function Metric({ label, value, unit, Icon }) {
+function Metric({ label, value, unit, note = "Live backend value", Icon }) {
   return (
     <div className="metric">
       <div className="muted metriclabel">
@@ -131,7 +131,7 @@ function Metric({ label, value, unit, Icon }) {
         {value}
         <small>{unit}</small>
       </div>
-      <div className="muted change">Live backend value</div>
+      <div className="muted change">{note}</div>
     </div>
   );
 }
@@ -423,6 +423,7 @@ function OverviewPage({
         <span>{error ? "BACKEND OFFLINE" : loading ? "CONNECTING" : "API CONNECTED"}</span>
       </div>
 
+      
       <div className="metrics">
         <Metric
           label="Orders processed"
@@ -430,18 +431,24 @@ function OverviewPage({
           unit=""
           Icon={Activity}
         />
+
         <Metric
-          label="Throughput"
-          value="—"
+          label="5-second rolling throughput"
+          value={formatNumber(
+            metrics?.throughput_orders_per_second
+          )}
           unit="orders/s"
+          note="Trailing 5-second order count / 5"
           Icon={Zap}
         />
+
         <Metric
-          label="Matching latency"
-          value="—"
+          label="Average matching latency"
+          value={formatNumber(metrics?.average_latency_us)}
           unit="µs"
           Icon={Clock3}
         />
+
         <Metric
           label="Trades executed"
           value={formatNumber(metrics?.trade_count)}
@@ -450,15 +457,6 @@ function OverviewPage({
         />
       </div>
 
-      <div className="grid">
-        <MarketChart range={range} setRange={setRange} />
-        <SystemHealthPanel health={health} error={error} loading={loading} />
-      </div>
-
-      <div className="grid lower">
-        <OrderBookPanel orderBook={orderBook} />
-        <RecentTradesPanel trades={trades} />
-      </div>
 
       <Footer />
     </>
