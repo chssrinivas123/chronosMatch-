@@ -1,10 +1,15 @@
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Activity,
   ArrowUpRight,
   BarChart3,
-  Bell,
   BookOpen,
   ChevronLeft,
   ChevronRight,
@@ -17,6 +22,7 @@ import {
   Pause,
   Play,
   Radio,
+  RefreshCw,
   Search,
   Settings2,
   ShieldCheck,
@@ -61,10 +67,21 @@ function useChronosApi() {
     trades: [],
     health: null,
     loading: true,
+    refreshing: false,
     error: "",
   });
+  const requestId = useRef(0);
+  const controller = useRef(null);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (force = true) => {
+    if (controller.current && !force) return;
+
+    controller.current?.abort();
+    const requestController = new AbortController();
+    controller.current = requestController;
+    const currentRequestId = ++requestId.current;
+    setData((previous) => ({ ...previous, refreshing: true }));
+
     try {
       const endpoints = [
         `${API_BASE}/api/metrics`,
@@ -74,7 +91,9 @@ function useChronosApi() {
       ];
 
       const responses = await Promise.all(
-        endpoints.map((url) => fetch(url))
+        endpoints.map((url) =>
+          fetch(url, { signal: requestController.signal })
+        )
       );
 
       if (responses.some((response) => !response.ok)) {
@@ -85,34 +104,67 @@ function useChronosApi() {
         responses.map((response) => response.json())
       );
 
+      if (
+        !metrics ||
+        typeof metrics !== "object" ||
+        Array.isArray(metrics) ||
+        !Array.isArray(trades)
+      ) {
+        throw new Error("The backend returned invalid dashboard data.");
+      }
+
+      if (currentRequestId !== requestId.current) return;
       setData({
         metrics,
         orderBook,
-        trades: Array.isArray(trades) ? trades : [],
+        trades,
         health,
         loading: false,
+        refreshing: false,
         error: "",
       });
-    } catch {
+    } catch (error) {
+      if (
+        currentRequestId !== requestId.current ||
+        (error instanceof Error && error.name === "AbortError")
+      ) {
+        return;
+      }
       setData((previous) => ({
         ...previous,
         loading: false,
-        error: "Cannot connect to the ChronosMatch backend.",
+        refreshing: false,
+        error: "Could not refresh API data.",
       }));
+    } finally {
+      if (currentRequestId === requestId.current) {
+        controller.current = null;
+      }
     }
   }, []);
 
   useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, 2000);
-    return () => clearInterval(interval);
+    refresh(false);
+    const interval = setInterval(() => refresh(false), 2000);
+    return () => {
+      clearInterval(interval);
+      requestId.current += 1;
+      controller.current?.abort();
+      controller.current = null;
+    };
   }, [refresh]);
 
   return { ...data, refresh };
 }
 
+const numberFormatter = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 3,
+});
+
 function formatNumber(value) {
-  return value == null ? "—" : Number(value).toLocaleString();
+  return typeof value === "number" && Number.isFinite(value)
+    ? numberFormatter.format(value)
+    : "—";
 }
 
 // Prices are represented as integer ticks by the current backend.
@@ -274,52 +326,85 @@ function SystemHealthPanel({ health, error, loading }) {
   );
 }
 
-function OrderBookPanel({ orderBook }) {
+function OrderBookPanel({ orderBook, error, loading }) {
   const bids = orderBook?.bids ?? [];
   const asks = orderBook?.asks ?? [];
-  const rowCount = Math.max(
-    5,
-    Math.min(10, Math.max(bids.length, asks.length))
+  const visibleBids = bids.slice(0, 10);
+  const visibleAsks = asks.slice(0, 10);
+  const maxVisibleQuantity = Math.max(
+    0,
+    ...visibleBids.map((order) => order.quantity),
+    ...visibleAsks.map((order) => order.quantity)
   );
+  const hasOrders = visibleBids.length > 0 || visibleAsks.length > 0;
+  const rowCount = hasOrders
+    ? Math.max(5, visibleBids.length, visibleAsks.length)
+    : 0;
+
+  const depthWidth = (quantity) =>
+    maxVisibleQuantity > 0
+      ? `${(quantity / maxVisibleQuantity) * 100}%`
+      : "0%";
 
   return (
     <Panel title="Order book" sub="Live orders from the matching engine">
       <div className="legend">
-        <span>🟢 Bids (Buy)</span>
-        <span>🔴 Asks (Sell)</span>
+        <span><i className="orderbook-legend-buy" /> BUY bids</span>
+        <span><i className="orderbook-legend-sell" /> SELL asks</span>
       </div>
 
+      {orderBook && (
+        <div className="orderbook-summary">
+          <div>
+            <span>BEST BID</span>
+            <b className="bid">{formatPrice(orderBook.best_bid)}</b>
+          </div>
+          <div>
+            <span>BEST ASK</span>
+            <b className="ask">{formatPrice(orderBook.best_ask)}</b>
+          </div>
+          <div>
+            <span>SPREAD</span>
+            <b>{formatPrice(orderBook.spread)} <small>ticks</small></b>
+          </div>
+        </div>
+      )}
+
       <div className="bookhead">
-        <span>SIZE</span>
+        <span>BUY QTY</span>
         <span>BID PRICE</span>
         <span>ASK PRICE</span>
-        <span>SIZE</span>
+        <span>SELL QTY</span>
       </div>
 
       {Array.from({ length: rowCount }, (_, index) => {
-        const bid = bids[index];
-        const ask = asks[index];
+        const bid = visibleBids[index];
+        const ask = visibleAsks[index];
 
         return (
           <div className="bookrow" key={`book-${index}`}>
-            <span className="size">
-              {bid ? formatNumber(bid.quantity) : "—"}
+            <span className="size orderbook-buy-depth">
+              <span className="orderbook-quantity">
+                {bid ? formatNumber(bid.quantity) : "—"}
+              </span>
               {bid && (
                 <i
                   style={{
-                    width: `${Math.min(100, bid.quantity)}%`,
+                    width: depthWidth(bid.quantity),
                   }}
                 />
               )}
             </span>
             <b className="bid">{bid ? formatPrice(bid.price) : "—"}</b>
             <b className="ask">{ask ? formatPrice(ask.price) : "—"}</b>
-            <span className="size right">
-              {ask ? formatNumber(ask.quantity) : "—"}
+            <span className="size right orderbook-sell-depth">
+              <span className="orderbook-quantity">
+                {ask ? formatNumber(ask.quantity) : "—"}
+              </span>
               {ask && (
                 <i
                   style={{
-                    width: `${Math.min(100, ask.quantity)}%`,
+                    width: depthWidth(ask.quantity),
                   }}
                 />
               )}
@@ -328,50 +413,97 @@ function OrderBookPanel({ orderBook }) {
         );
       })}
 
-      <div className="spread">
-        Spread <b>{formatPrice(orderBook?.spread)}</b>
-        <span>Ticks</span>
-      </div>
-
       {!orderBook && (
-        <div className="history-empty">
-          Waiting for order-book data...
+        <div className="history-empty orderbook-state">
+          {loading ? (
+            <>
+              <b>Loading order book...</b>
+              <p>Waiting for the backend response.</p>
+            </>
+          ) : error ? (
+            <>
+              <b>Backend disconnected</b>
+              <p>Order-book data could not be loaded. Try refreshing.</p>
+            </>
+          ) : (
+            <>
+              <b>Order book unavailable</b>
+              <p>No order-book snapshot is available.</p>
+            </>
+          )}
+        </div>
+      )}
+
+      {orderBook && !hasOrders && (
+        <div className="history-empty orderbook-state">
+          <b>Order book is empty</b>
+          <p>Submit an order to populate the BUY or SELL side.</p>
+        </div>
+      )}
+
+      {orderBook && error && (
+        <div className="healthnote">
+          Showing the last successfully loaded order-book snapshot.
         </div>
       )}
     </Panel>
   );
 }
 
-function RecentTradesPanel({ trades }) {
-  const recent = [...trades].reverse().slice(0, 5);
+function RecentTradesPanel({ trades, error, loading }) {
+  const recent = trades.slice(0, 5);
 
   return (
     <Panel title="Recent trades" sub="Latest executed trades from the API">
-      <div className="tradehead">
-        <span>TRADE</span>
-        <span>BUY ID</span>
-        <span>SELL ID</span>
-        <span>QTY</span>
-      </div>
-
-      {recent.map((trade) => (
-        <div className="traderow" key={trade.trade_id}>
-          <span>#{trade.trade_id}</span>
-          <b className="buy">{trade.buy_order_id}</b>
-          <b className="sell">{trade.sell_order_id}</b>
-          <span>{formatNumber(trade.quantity)}</span>
+      <div className="recent-trades-table">
+        <div className="tradehead">
+          <span>TRADE ID</span>
+          <span>BUY ID</span>
+          <span>SELL ID</span>
+          <span>PRICE</span>
+          <span>QTY</span>
         </div>
-      ))}
+
+        {recent.map((trade) => (
+          <div className="traderow" key={trade.trade_id}>
+            <span className="recent-trade-id">#{formatNumber(trade.trade_id)}</span>
+            <b className="buy">{formatNumber(trade.buy_order_id)}</b>
+            <b className="sell">{formatNumber(trade.sell_order_id)}</b>
+            <span className="recent-trade-price">{formatPrice(trade.price)}</span>
+            <span className="recent-trade-quantity">
+              {formatNumber(trade.quantity)}
+            </span>
+          </div>
+        ))}
+      </div>
 
       {recent.length === 0 && (
         <div className="history-empty">
-          <b>No trades yet</b>
-          <p>Submit matching BUY and SELL orders to create a trade.</p>
+          <b>
+            {loading
+              ? "Loading recent trades..."
+              : error
+                ? "Recent trades unavailable"
+                : "No trades yet"}
+          </b>
+          <p>
+            {loading
+              ? "Waiting for the backend response."
+              : error
+                ? "Could not load recent trade data."
+                : "Submit matching BUY and SELL orders to create a trade."}
+          </p>
+        </div>
+      )}
+
+      {recent.length > 0 && error && (
+        <div className="healthnote">
+          Showing the last successfully loaded trades.
         </div>
       )}
 
       <div className="chartfoot">
-        Execution prices use integer ticks. Timestamps are not yet provided.
+        Prices use integer ticks. The API does not provide trade timestamps.
       </div>
     </Panel>
   );
@@ -393,6 +525,7 @@ function OverviewPage({
   health,
   error,
   loading,
+  apiRefreshing,
   range,
   setRange,
 }) {
@@ -413,17 +546,30 @@ function OverviewPage({
         <div>
           <b>Safe demo environment</b>
           <p>
-            {error
-              ? "Backend connection failed. Displayed API values may be unavailable."
-              : loading
-                ? "Connecting to the backend..."
-                : "Connected to the local ChronosMatch API."}
+            {loading
+              ? "Connecting to the backend..."
+              : apiRefreshing
+                ? "Refreshing backend data. Previously fetched values remain visible."
+                : error
+                  ? metrics
+                    ? "Refresh failed. Showing the last successfully fetched values."
+                    : "Backend connection failed. No dashboard data is available yet."
+                  : metrics?.processed_orders === 0
+                    ? "Connected to the local API. No orders have been processed yet."
+                    : "Connected to the local ChronosMatch API."}
           </p>
         </div>
-        <span>{error ? "BACKEND OFFLINE" : loading ? "CONNECTING" : "API CONNECTED"}</span>
+        <span>
+          {loading
+            ? "CONNECTING"
+            : apiRefreshing
+              ? "REFRESHING"
+              : error
+                ? "BACKEND OFFLINE"
+                : "API CONNECTED"}
+        </span>
       </div>
 
-      
       <div className="metrics">
         <Metric
           label="Orders processed"
@@ -434,9 +580,7 @@ function OverviewPage({
 
         <Metric
           label="5-second rolling throughput"
-          value={formatNumber(
-            metrics?.throughput_orders_per_second
-          )}
+          value={formatNumber(metrics?.throughput_orders_per_second)}
           unit="orders/s"
           note="Trailing 5-second order count / 5"
           Icon={Zap}
@@ -457,6 +601,7 @@ function OverviewPage({
         />
       </div>
 
+      <RecentTradesPanel trades={trades} error={error} loading={loading} />
 
       <Footer />
     </>
@@ -475,7 +620,7 @@ function HistorySummary({ label, value, Icon }) {
   );
 }
 
-function TradeHistoryPage({ trades }) {
+function TradeHistoryPage({ trades, error, loading }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const pageSize = 8;
@@ -483,16 +628,14 @@ function TradeHistoryPage({ trades }) {
   const filteredTrades = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    return [...trades]
-      .reverse()
-      .filter((trade) => {
-        return (
-          !query ||
-          String(trade.trade_id).includes(query) ||
-          String(trade.buy_order_id).includes(query) ||
-          String(trade.sell_order_id).includes(query)
-        );
-      });
+    return trades.filter((trade) => {
+      return (
+        !query ||
+        String(trade.trade_id).includes(query) ||
+        String(trade.buy_order_id).includes(query) ||
+        String(trade.sell_order_id).includes(query)
+      );
+    });
   }, [search, trades]);
 
   const pageCount = Math.max(
@@ -546,6 +689,11 @@ function TradeHistoryPage({ trades }) {
       </div>
 
       <Panel title="Executions" sub="Actual trade records from the API">
+        {error && trades.length > 0 && (
+          <div className="healthnote history-stale-note">
+            Refresh failed. Showing previously fetched trade records.
+          </div>
+        )}
         <div className="history-toolbar">
           <label className="history-search">
             <Search size={16} />
@@ -567,22 +715,22 @@ function TradeHistoryPage({ trades }) {
             <thead>
               <tr>
                 <th>Trade ID</th>
-                <th>Buyer order</th>
-                <th>Seller order</th>
-                <th>Price (ticks)</th>
-                <th>Quantity</th>
+                <th>Buy order ID</th>
+                <th>Sell order ID</th>
+                <th className="numeric">Execution price (ticks)</th>
+                <th className="numeric">Quantity</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {visibleTrades.map((trade) => (
                 <tr key={trade.trade_id}>
-                  <td className="trade-id">{trade.trade_id}</td>
-                  <td>{trade.buy_order_id}</td>
-                  <td>{trade.sell_order_id}</td>
-                  <td className="trade-price">{formatPrice(trade.price)}</td>
-                  <td>{formatNumber(trade.quantity)}</td>
-                  <td><span className="status-badge">Filled</span></td>
+                  <td className="trade-id">{formatNumber(trade.trade_id)}</td>
+                  <td className="trade-order-id">{formatNumber(trade.buy_order_id)}</td>
+                  <td className="trade-order-id">{formatNumber(trade.sell_order_id)}</td>
+                  <td className="trade-price numeric">{formatPrice(trade.price)}</td>
+                  <td className="numeric">{formatNumber(trade.quantity)}</td>
+                  <td><span className="status-badge status-executed">Executed</span></td>
                 </tr>
               ))}
             </tbody>
@@ -591,8 +739,24 @@ function TradeHistoryPage({ trades }) {
           {visibleTrades.length === 0 && (
             <div className="history-empty">
               <Search size={20} />
-              <b>No trades found</b>
-              <p>Submit matching orders or change your search.</p>
+              <b>
+                {loading && trades.length === 0
+                  ? "Loading trade history..."
+                  : error && trades.length === 0
+                    ? "Trade history unavailable"
+                    : trades.length === 0
+                      ? "No trades recorded yet"
+                      : "No matching trades"}
+              </b>
+              <p>
+                {loading && trades.length === 0
+                  ? "Waiting for the backend response."
+                  : error && trades.length === 0
+                    ? "Could not load trade history."
+                    : trades.length === 0
+                      ? "Submit matching BUY and SELL orders to create a trade."
+                      : "Try a different trade or order ID search."}
+              </p>
             </div>
           )}
         </div>
@@ -626,7 +790,7 @@ function TradeHistoryPage({ trades }) {
         </div>
 
         <div className="chartfoot">
-          The current API does not yet return trade timestamps.
+          Execution prices use integer ticks. The API does not provide timestamps.
         </div>
       </Panel>
 
@@ -635,35 +799,104 @@ function TradeHistoryPage({ trades }) {
   );
 }
 
-function PlaceholderPage({ page }) {
-  const messages = {
-    Performance:
-      "Throughput and latency charts will be available after we add benchmark instrumentation.",
-    Settings:
-      "Dashboard and simulator settings will be available here.",
-  };
+function PerformancePage({ metrics, error, loading }) {
+  const hasMetrics = metrics != null;
+  return (
+    <>
+      <div className="titleline">
+        <div>
+          <div className="eyebrow">MARKET OPERATIONS · SESSION 001</div>
+          <h1>Performance</h1>
+          <p className="subtitle">Live matching-engine metrics and standalone benchmark guidance.</p>
+        </div>
+      </div>
 
+      <div className="notice">
+        <Gauge size={20} />
+        <div>
+          <b>Live API metrics</b>
+          <p>
+            {loading
+              ? "Connecting to the backend..."
+              : error
+                ? hasMetrics
+                  ? "Refresh failed. Showing the last successfully fetched metrics."
+                  : "Performance metrics are unavailable while the backend is disconnected."
+                : hasMetrics
+                  ? "Values are reported by the local ChronosMatch API."
+                  : "The API has not returned performance metrics yet."}
+          </p>
+        </div>
+        <span>{loading ? "CONNECTING" : error ? "BACKEND OFFLINE" : hasMetrics ? "API METRICS" : "UNAVAILABLE"}</span>
+      </div>
+
+      <div className="metrics">
+        <Metric
+          label="Orders processed"
+          value={formatNumber(metrics?.processed_orders)}
+          unit=""
+          Icon={Activity}
+        />
+        <Metric
+          label="Rolling throughput"
+          value={formatNumber(metrics?.throughput_orders_per_second)}
+          unit="orders/s"
+          note="Trailing five-second rate; not benchmark throughput"
+          Icon={Zap}
+        />
+        <Metric
+          label="Average matching latency"
+          value={formatNumber(metrics?.average_latency_us)}
+          unit="µs"
+          Icon={Clock3}
+        />
+        <Metric
+          label="Trades executed"
+          value={formatNumber(metrics?.trade_count)}
+          unit=""
+          Icon={ArrowUpRight}
+        />
+      </div>
+
+      <section className="performance-note">
+        <div>
+          <b>Standalone benchmark</b>
+          <p>
+            Dashboard throughput is the API’s rolling five-second order rate.
+            It is different from benchmark throughput, which measures successful
+            in-process order submissions over a complete benchmark run.
+          </p>
+          <p>
+            To run the benchmark from the project root:
+          </p>
+          <code>python backend/benchmarks/order_book_benchmark.py</code>
+          <small>
+            The script prints its JSON results to the terminal. Results are not
+            available through the dashboard API or stored by the frontend.
+          </small>
+        </div>
+      </section>
+      <Footer />
+    </>
+  );
+}
+
+function PlaceholderPage({ page }) {
   return (
     <>
       <div className="titleline">
         <div>
           <div className="eyebrow">MARKET OPERATIONS · SESSION 001</div>
           <h1>{page}</h1>
-          <p className="subtitle">
-            {page === "Performance"
-              ? "Review measured engine performance."
-              : "Manage your local demo preferences."}
-          </p>
+          <p className="subtitle">Manage your local demo preferences.</p>
         </div>
       </div>
 
       <section className="placeholder-panel">
-        <span>
-          {page === "Performance" ? <Gauge size={20} /> : <Settings2 size={20} />}
-        </span>
+        <span><Settings2 size={20} /></span>
         <div>
           <b>{page} page</b>
-          <p>{messages[page]}</p>
+          <p>Dashboard and simulator settings will be available here.</p>
           <small>Educational simulator · Mock orders only</small>
         </div>
       </section>
@@ -689,6 +922,7 @@ export default function App() {
         health={api.health}
         error={api.error}
         loading={api.loading}
+        apiRefreshing={api.refreshing}
         range={range}
         setRange={setRange}
       />
@@ -706,12 +940,22 @@ export default function App() {
           </div>
         </div>
         {api.error && <div className="healthnote">{api.error}</div>}
-        <OrderBookPanel orderBook={api.orderBook} />
+        <OrderBookPanel
+          orderBook={api.orderBook}
+          error={api.error}
+          loading={api.loading}
+        />
         <Footer />
       </>
     );
   } else if (nav === "Trade History") {
-    pageContent = <TradeHistoryPage trades={api.trades} />;
+    pageContent = (
+      <TradeHistoryPage
+        trades={api.trades}
+        error={api.error}
+        loading={api.loading}
+      />
+    );
   } else if (nav === "System Health") {
     pageContent = (
       <>
@@ -729,6 +973,14 @@ export default function App() {
         />
         <Footer />
       </>
+    );
+  } else if (nav === "Performance") {
+    pageContent = (
+      <PerformancePage
+        metrics={api.metrics}
+        error={api.error}
+        loading={api.loading}
+      />
     );
   } else {
     pageContent = <PlaceholderPage page={nav} />;
@@ -825,15 +1077,24 @@ export default function App() {
           <div className="topright">
             <span className="sample">
               <i />
-              {api.error ? "BACKEND OFFLINE" : "API DATA"}
+              {api.refreshing
+                ? "REFRESHING"
+                : api.error
+                  ? api.metrics
+                    ? "REFRESH FAILED"
+                    : "BACKEND OFFLINE"
+                  : "API DATA"}
             </span>
             <button
-              title="Refresh API data"
+              title={
+                api.error ? "Refresh failed. Try again." : "Refresh API data"
+              }
               aria-label="Refresh API data"
-              onClick={api.refresh}
+              aria-busy={api.refreshing}
+              onClick={() => api.refresh()}
               className="refresh-button"
             >
-              <Bell size={18} />
+              <RefreshCw size={18} />
             </button>
             <div className="avatar">S</div>
           </div>

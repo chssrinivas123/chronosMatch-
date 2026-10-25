@@ -142,8 +142,14 @@
 .history-table td:first-child { padding-left: 2px; }
 .history-table tbody tr:last-child td { border-bottom: 0; }
 .trade-id { color: #dce5f1 !important; font-weight: 600; }
+.trade-order-id { color: #cbd6e5 !important; }
 .trade-time { color: #8796ac !important; }
 .trade-price { color: #e4ebf4 !important; font-weight: 600; }
+.numeric { text-align: right !important; }
+
+.history-table { min-width: 720px; }
+.history-table th.numeric,
+.history-table td.numeric { text-align: right; }
 
 .trade-badge,
 .status-badge {
@@ -158,6 +164,44 @@
 .trade-badge.buy { color: #5bdcb4; background: #16372f; }
 .trade-badge.sell { color: #f28a9b; background: #3b202b; }
 .status-badge { color: #9db0c6; background: #1b293d; font-weight: 500; }
+.status-badge.status-executed {
+  color: #5bdcb4;
+  background: #16372f;
+  border: 1px solid #245545;
+}
+
+.history-stale-note { margin-bottom: 12px; }
+
+.recent-trades-table {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #34445b transparent;
+}
+
+.recent-trades-table .tradehead,
+.recent-trades-table .traderow {
+  min-width: 400px;
+  grid-template-columns: 1fr .9fr .9fr 1fr .7fr;
+  gap: 8px;
+}
+
+.recent-trades-table .tradehead > :nth-child(n + 4),
+.recent-trades-table .traderow > :nth-child(n + 4) {
+  text-align: right;
+}
+
+.recent-trades-table .traderow {
+  min-height: 38px;
+  padding: 8px 0;
+  border-bottom: 1px solid #202b3d;
+  color: #bdc8d7;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.recent-trade-id { color: #dce5f1; font-weight: 600; }
+.recent-trade-price { color: #e4ebf4; font-weight: 600; }
+.recent-trade-quantity { color: #bdc8d7; }
 
 .history-empty {
   display: grid;
@@ -221,6 +265,129 @@
 .placeholder-panel p { margin: 6px 0 9px; color: #94a2b8; font-size: 11px; }
 .placeholder-panel small { color: #74839b; font-size: 9px; }
 
+.performance-note {
+  padding: 17px;
+  background: #111a2b;
+  border: 1px solid #253146;
+  border-radius: 10px;
+}
+
+.performance-note b {
+  color: #e7edf7;
+  font-size: 12px;
+}
+
+.performance-note p {
+  margin: 8px 0;
+  color: #94a2b8;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.performance-note code {
+  display: inline-block;
+  max-width: 100%;
+  padding: 8px 10px;
+  overflow-x: auto;
+  color: #5bdcb4;
+  background: #0c1423;
+  border: 1px solid #29364b;
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.performance-note small {
+  display: block;
+  margin-top: 9px;
+  color: #74839b;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.orderbook-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 13px;
+}
+
+.orderbook-summary > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 9px 10px;
+  background: #0c1423;
+  border: 1px solid #202b3d;
+  border-radius: 7px;
+}
+
+.orderbook-summary span {
+  color: #75859c;
+  font-size: 8px;
+  letter-spacing: .5px;
+}
+
+.orderbook-summary b {
+  color: #e4edf7;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.orderbook-summary b small {
+  color: #8291a7;
+  font-size: 8px;
+  font-weight: 400;
+}
+
+.orderbook-summary .bid { color: #55d8b1; }
+.orderbook-summary .ask { color: #f18496; }
+
+.legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.orderbook-legend-buy,
+.orderbook-legend-sell {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.orderbook-legend-buy { background: #55d8b1; }
+.orderbook-legend-sell { background: #f18496; }
+
+.bookhead span:first-child { color: #55d8b1; }
+.bookhead span:last-child { color: #f18496; }
+
+.bookrow .size {
+  z-index: 0;
+  padding: 2px 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bookrow .size.right { text-align: right; }
+.bookrow .size.orderbook-buy-depth { color: #8ddfc7; }
+.bookrow .size.orderbook-sell-depth { color: #efacb7; }
+.orderbook-quantity { position: relative; z-index: 1; }
+
+.bookrow .orderbook-buy-depth i {
+  background: #2dc99b20;
+  border-right-color: #36cfa2;
+}
+
+.bookrow .orderbook-sell-depth i {
+  right: 0;
+  left: auto;
+  background: #e55b7020;
+  border-right: 0;
+  border-left: 2px solid #e87588;
+}
+
+.bookrow .size i { z-index: 0; }
+.orderbook-state { padding: 22px 12px; }
+
 @media (max-width: 850px) {
   .history-summaries { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -275,4 +442,7 @@
   .history-table { min-width: 620px; }
   .history-table th,
   .history-table td { padding-right: 9px; padding-left: 9px; }
+  .orderbook-summary { gap: 5px; }
+  .orderbook-summary > div { padding: 8px 7px; }
+  .orderbook-summary b { font-size: 11px; }
 }
