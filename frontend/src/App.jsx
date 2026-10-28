@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Copy,
   Cpu,
   Database,
   Gauge,
@@ -170,6 +171,58 @@ function formatNumber(value) {
 // Prices are represented as integer ticks by the current backend.
 function formatPrice(value) {
   return value == null ? "—" : Number(value).toLocaleString();
+}
+
+function CopyTradeIdButton({ tradeId }) {
+  const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
+  const timeoutRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = useCallback(async () => {
+    const text = String(tradeId);
+
+    try {
+      if (!navigator?.clipboard?.writeText) {
+        throw new Error("Clipboard API unavailable");
+      }
+
+      await navigator.clipboard.writeText(text);
+      setCopyFailed(false);
+      setCopied(true);
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = window.setTimeout(() => setCopied(false), 1400);
+    } catch (error) {
+      setCopied(false);
+      setCopyFailed(true);
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = window.setTimeout(() => setCopyFailed(false), 1800);
+    }
+  }, [tradeId]);
+
+  return (
+    <button
+      type="button"
+      className={`copy-trade-id ${copied ? "copied" : ""} ${copyFailed ? "copy-error" : ""}`.trim()}
+      onClick={handleCopy}
+      aria-label={copied ? `Trade ID ${tradeId} copied to clipboard` : `Copy trade ID ${tradeId}`}
+      title={copied ? "Copied" : copyFailed ? "Copy failed" : `Copy trade ID ${tradeId}`}
+    >
+      <Copy size={12} aria-hidden="true" />
+      <span>{copied ? "Copied" : copyFailed ? "Retry" : "Copy"}</span>
+    </button>
+  );
 }
 
 function Metric({ label, value, unit, note = "Live backend value", Icon }) {
@@ -466,7 +519,10 @@ function RecentTradesPanel({ trades, error, loading }) {
 
         {recent.map((trade) => (
           <div className="traderow" key={trade.trade_id}>
-            <span className="recent-trade-id">#{formatNumber(trade.trade_id)}</span>
+            <div className="trade-id-value">
+              <span className="recent-trade-id">#{formatNumber(trade.trade_id)}</span>
+              <CopyTradeIdButton tradeId={trade.trade_id} />
+            </div>
             <b className="buy">{formatNumber(trade.buy_order_id)}</b>
             <b className="sell">{formatNumber(trade.sell_order_id)}</b>
             <span className="recent-trade-price">{formatPrice(trade.price)}</span>
@@ -725,7 +781,12 @@ function TradeHistoryPage({ trades, error, loading }) {
             <tbody>
               {visibleTrades.map((trade) => (
                 <tr key={trade.trade_id}>
-                  <td className="trade-id">{formatNumber(trade.trade_id)}</td>
+                  <td className="trade-id-cell">
+                    <div className="trade-id-value">
+                      <span className="trade-id">{formatNumber(trade.trade_id)}</span>
+                      <CopyTradeIdButton tradeId={trade.trade_id} />
+                    </div>
+                  </td>
                   <td className="trade-order-id">{formatNumber(trade.buy_order_id)}</td>
                   <td className="trade-order-id">{formatNumber(trade.sell_order_id)}</td>
                   <td className="trade-price numeric">{formatPrice(trade.price)}</td>

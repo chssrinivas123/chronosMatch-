@@ -142,6 +142,50 @@
 .history-table td:first-child { padding-left: 2px; }
 .history-table tbody tr:last-child td { border-bottom: 0; }
 .trade-id { color: #dce5f1 !important; font-weight: 600; }
+.trade-id-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.trade-id-cell {
+  min-width: 160px;
+}
+.copy-trade-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 7px;
+  color: #cfe2ff;
+  background: #101a2b;
+  border: 1px solid #2a3b52;
+  border-radius: 5px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .15px;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.copy-trade-id:hover {
+  color: #eef6ff;
+  border-color: #3f5674;
+  background: #162437;
+}
+.copy-trade-id:focus-visible {
+  outline: 2px solid rgba(91, 220, 180, .8);
+  outline-offset: 2px;
+}
+.copy-trade-id.copied {
+  color: #5bdcb4;
+  background: #16372f;
+  border-color: #2d5f4d;
+}
+.copy-trade-id.copy-error {
+  color: #f7b7c4;
+  background: #3b202b;
+  border-color: #5a2e3a;
+}
 .trade-order-id { color: #cbd6e5 !important; }
 .trade-time { color: #8796ac !important; }
 .trade-price { color: #e4ebf4 !important; font-weight: 600; }
