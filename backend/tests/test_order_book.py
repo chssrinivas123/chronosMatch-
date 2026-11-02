@@ -1,4 +1,9 @@
 
+import pytest
+from fastapi.testclient import TestClient
+from pydantic import ValidationError
+
+import main
 from engine.order_book import OrderBook
 from models.order import OrderRequest
 
@@ -92,3 +97,79 @@ def test_first_order_at_same_price_matches_first():
     ]
     assert len(remaining) == 1
     assert remaining[0]["quantity"] == 4
+
+
+def test_valid_order_requests_are_accepted():
+    request = OrderRequest(side="BUY", price=10000, quantity=10)
+    assert request.side == "BUY"
+    assert request.price == 10000
+    assert request.quantity == 10
+
+    passive_request = OrderRequest(side="SELL", price=9900, quantity=1)
+    assert passive_request.side == "SELL"
+    assert passive_request.price == 9900
+    assert passive_request.quantity == 1
+
+
+@pytest.fixture
+def api_client(monkeypatch):
+    book = OrderBook()
+    monkeypatch.setattr(main, "order_book", book)
+    return TestClient(main.app)
+
+
+@pytest.mark.parametrize(
+    "invalid_price",
+    [0, -1, float("nan"), float("inf"), -float("inf")],
+)
+def test_invalid_prices_are_rejected(invalid_price):
+    with pytest.raises(ValidationError):
+        OrderRequest(side="BUY", price=invalid_price, quantity=1)
+
+
+@pytest.mark.parametrize("invalid_quantity", [0, -1])
+def test_invalid_quantities_are_rejected(invalid_quantity):
+    with pytest.raises(ValidationError):
+        OrderRequest(side="SELL", price=10000, quantity=invalid_quantity)
+
+
+@pytest.mark.parametrize("invalid_side", ["buy", "SELLER", "", "HOLD"])
+def test_invalid_sides_are_rejected(invalid_side):
+    with pytest.raises(ValidationError):
+        OrderRequest(side=invalid_side, price=10000, quantity=1)
+
+
+def test_api_rejects_invalid_order_payloads(api_client):
+    invalid_payloads = [
+        {"side": "BUY", "price": 0, "quantity": 10},
+        {"side": "BUY", "price": -5, "quantity": 10},
+        {"side": "BUY", "price": "nan", "quantity": 10},
+        {"side": "BUY", "price": "inf", "quantity": 10},
+        {"side": "BUY", "price": 10000, "quantity": 0},
+        {"side": "BUY", "price": 10000, "quantity": -1},
+        {"side": "buy", "price": 10000, "quantity": 10},
+    ]
+
+    for payload in invalid_payloads:
+        response = api_client.post("/api/orders", json=payload)
+        assert response.status_code == 422
+
+
+def test_api_accepts_valid_unmatched_orders_and_resting_book(api_client):
+    response = api_client.post(
+        "/api/orders",
+        json={"side": "BUY", "price": 10000, "quantity": 10},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "OPEN"
+    assert payload["remaining_quantity"] == 10
+    assert payload["trades"] == []
+
+    book_response = api_client.get("/api/order-book")
+    assert book_response.status_code == 200
+    book_payload = book_response.json()
+    assert book_payload["best_bid"] == 10000
+    assert book_payload["best_ask"] is None
+    assert book_payload["bids"][0]["quantity"] == 10
