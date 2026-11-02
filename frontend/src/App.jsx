@@ -17,11 +17,13 @@ import {
   Copy,
   Cpu,
   Database,
+  Download,
   Gauge,
   LayoutDashboard,
   Menu,
   Pause,
   Play,
+  Plus,
   Radio,
   RefreshCw,
   Search,
@@ -161,6 +163,12 @@ function useChronosApi() {
 const numberFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 3,
 });
+const currencyFormatter = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  maximumFractionDigits: 0,
+  minimumFractionDigits: 0,
+});
 
 function formatNumber(value) {
   return typeof value === "number" && Number.isFinite(value)
@@ -168,9 +176,16 @@ function formatNumber(value) {
     : "—";
 }
 
-// Prices are represented as integer ticks by the current backend.
+// Prices are represented as integer ticks by the current backend and displayed in INR.
 function formatPrice(value) {
-  return value == null ? "—" : Number(value).toLocaleString();
+  return value == null ? "—" : currencyFormatter.format(Number(value));
+}
+
+function escapeCsvCell(value) {
+  const stringValue = value == null ? "" : String(value);
+  return /[",\n\r]/.test(stringValue)
+    ? `"${stringValue.replace(/"/g, '""')}"`
+    : stringValue;
 }
 
 function CopyTradeIdButton({ tradeId }) {
@@ -418,7 +433,7 @@ function OrderBookPanel({ orderBook, error, loading }) {
           </div>
           <div>
             <span>SPREAD</span>
-            <b>{formatPrice(orderBook.spread)} <small>ticks</small></b>
+            <b>{formatPrice(orderBook.spread)}</b>
           </div>
         </div>
       )}
@@ -559,7 +574,7 @@ function RecentTradesPanel({ trades, error, loading }) {
       )}
 
       <div className="chartfoot">
-        Prices use integer ticks. The API does not provide trade timestamps.
+        Prices are displayed in INR; the backend still uses integer ticks. The API does not provide trade timestamps.
       </div>
     </Panel>
   );
@@ -574,6 +589,202 @@ function Footer() {
   );
 }
 
+function AddOrderButton({ refresh }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [form, setForm] = useState({ side: "BUY", price: "", quantity: "" });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const resetForm = useCallback(() => {
+    setForm({ side: "BUY", price: "", quantity: "" });
+  }, []);
+
+  const closeModal = useCallback(() => {
+    setIsOpen(false);
+    setError("");
+    setSuccess("");
+    resetForm();
+  }, [resetForm]);
+
+  const handleChange = useCallback((event) => {
+    const { name, value } = event.target;
+    setForm((previous) => ({ ...previous, [name]: value }));
+    if (error) {
+      setError("");
+    }
+    if (success) {
+      setSuccess("");
+    }
+  }, [error, success]);
+
+  const handleSubmit = useCallback(async (event) => {
+    event.preventDefault();
+    setError("");
+    setSuccess("");
+
+    const side = form.side;
+    const rawPrice = form.price.trim();
+    const rawQuantity = form.quantity.trim();
+
+    if (!side || !["BUY", "SELL"].includes(side)) {
+      setError("Please select either BUY or SELL.");
+      return;
+    }
+
+    if (!rawPrice || !rawQuantity) {
+      setError("Price and quantity are required.");
+      return;
+    }
+
+    const price = Number(rawPrice);
+    const quantity = Number(rawQuantity);
+
+    if (!Number.isFinite(price) || !Number.isInteger(price) || price <= 0) {
+      setError("Price must be a positive whole number.");
+      return;
+    }
+
+    if (!Number.isFinite(quantity) || !Number.isInteger(quantity) || quantity <= 0) {
+      setError("Quantity must be a positive whole number.");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ side, price, quantity }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const details = payload?.detail;
+        if (Array.isArray(details) && details[0]?.msg) {
+          throw new Error(details[0].msg);
+        }
+        if (typeof details === "string") {
+          throw new Error(details);
+        }
+        throw new Error("The backend rejected the order request.");
+      }
+
+      setSuccess(`Order submitted successfully: ${side} ${quantity} @ ${price}.`);
+      setForm({ side: "BUY", price: "", quantity: "" });
+      await refresh(true);
+    } catch (requestError) {
+      setError(requestError.message || "Could not submit order.");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [form, refresh]);
+
+  return (
+    <>
+      <button
+        type="button"
+        className="runbutton add-order-button"
+        onClick={() => setIsOpen(true)}
+        aria-label="Add a trading order"
+      >
+        <Plus size={14} aria-hidden="true" />
+        Add Order
+      </button>
+
+      {isOpen && (
+        <div className="modal-backdrop" onClick={closeModal} role="presentation">
+          <div
+            className="add-order-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-order-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="add-order-header">
+              <div>
+                <div className="eyebrow">NEW ORDER</div>
+                <h2 id="add-order-title">Submit order</h2>
+              </div>
+              <button
+                type="button"
+                className="add-order-close"
+                onClick={closeModal}
+                aria-label="Close add order form"
+              >
+                <X size={16} aria-hidden="true" />
+              </button>
+            </div>
+
+            <form className="add-order-form" onSubmit={handleSubmit}>
+              <div className="add-order-field">
+                <label htmlFor="order-side">Side</label>
+                <select
+                  id="order-side"
+                  name="side"
+                  value={form.side}
+                  onChange={handleChange}
+                >
+                  <option value="BUY">BUY</option>
+                  <option value="SELL">SELL</option>
+                </select>
+              </div>
+
+              <div className="add-order-field">
+                <label htmlFor="order-price">Price (₹)</label>
+                <input
+                  id="order-price"
+                  name="price"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={form.price}
+                  onChange={handleChange}
+                  placeholder="10000"
+                  aria-label="Order price in Indian Rupees"
+                />
+              </div>
+
+              <div className="add-order-field">
+                <label htmlFor="order-quantity">Quantity</label>
+                <input
+                  id="order-quantity"
+                  name="quantity"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={form.quantity}
+                  onChange={handleChange}
+                  placeholder="10"
+                  aria-label="Order quantity"
+                />
+              </div>
+
+              {error && <div className="form-message form-error">{error}</div>}
+              {success && <div className="form-message form-success">{success}</div>}
+
+              <div className="add-order-actions">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={closeModal}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="primary-button" disabled={submitting}>
+                  {submitting ? "Submitting..." : "Submit Order"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function OverviewPage({
   metrics,
   orderBook,
@@ -584,6 +795,7 @@ function OverviewPage({
   apiRefreshing,
   range,
   setRange,
+  refresh,
 }) {
   return (
     <>
@@ -595,6 +807,7 @@ function OverviewPage({
             Monitor your matching engine and simulated orders.
           </p>
         </div>
+        <AddOrderButton refresh={refresh} />
       </div>
 
       <div className="notice">
@@ -699,6 +912,52 @@ function TradeHistoryPage({ trades, error, loading }) {
     });
   }, [search, trades]);
 
+  const handleExportCsv = useCallback(() => {
+    if (filteredTrades.length === 0) {
+      return;
+    }
+
+    const rows = [
+      [
+        "Trade ID",
+        "Buy Order ID",
+        "Sell Order ID",
+        "Execution Price (INR)",
+        "Quantity",
+        "Status",
+        "Trade Value (INR)",
+      ],
+      ...filteredTrades.map((trade) => {
+        const executionPrice = Number(trade.price);
+        const quantity = Number(trade.quantity);
+
+        return [
+          trade.trade_id,
+          trade.buy_order_id,
+          trade.sell_order_id,
+          currencyFormatter.format(executionPrice),
+          quantity,
+          "Executed",
+          currencyFormatter.format(executionPrice * quantity),
+        ];
+      }),
+    ];
+
+    const csv = rows
+      .map((row) => row.map((cell) => escapeCsvCell(cell)).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "chronosmatch-trade-history.csv";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, [filteredTrades]);
+
   const pageCount = Math.max(
     1,
     Math.ceil(filteredTrades.length / pageSize)
@@ -781,6 +1040,18 @@ function TradeHistoryPage({ trades, error, loading }) {
               </button>
             )}
           </label>
+
+          <button
+            type="button"
+            className="history-export"
+            onClick={handleExportCsv}
+            disabled={filteredTrades.length === 0}
+            aria-label="Export trade history as CSV"
+            title="Export CSV"
+          >
+            <Download size={14} aria-hidden="true" />
+            <span>Export CSV</span>
+          </button>
         </div>
 
         <div className="history-table-wrap">
@@ -790,7 +1061,7 @@ function TradeHistoryPage({ trades, error, loading }) {
                 <th>Trade ID</th>
                 <th>Buy order ID</th>
                 <th>Sell order ID</th>
-                <th className="numeric">Execution price (ticks)</th>
+                <th className="numeric">Execution price (₹)</th>
                 <th className="numeric">Quantity</th>
                 <th>Status</th>
               </tr>
@@ -868,7 +1139,7 @@ function TradeHistoryPage({ trades, error, loading }) {
         </div>
 
         <div className="chartfoot">
-          Execution prices use integer ticks. The API does not provide timestamps.
+          Execution prices are displayed in INR; the backend still uses integer ticks. The API does not provide timestamps.
         </div>
       </Panel>
 
@@ -1003,6 +1274,7 @@ export default function App() {
         apiRefreshing={api.refreshing}
         range={range}
         setRange={setRange}
+        refresh={api.refresh}
       />
     );
   } else if (nav === "Order Book") {

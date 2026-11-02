@@ -98,6 +98,37 @@
   outline: none;
 }
 
+.history-export {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  color: #dfeafc;
+  background: #0c1423;
+  border: 1px solid #29364b;
+  border-radius: 7px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .15px;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+
+.history-export:hover:not(:disabled),
+.history-export:focus-visible:not(:disabled) {
+  color: #eef6ff;
+  background: #162437;
+  border-color: #3f5674;
+  outline: none;
+}
+
+.history-export:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
 .history-search input,
 .history-time-filter select {
   width: 100%;
