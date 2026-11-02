@@ -75,6 +75,29 @@
 
 .history-search { flex: 1 1 220px; }
 
+.history-search-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: #9aa9ba;
+  background: transparent;
+  border: 1px solid #2a3b52;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+
+.history-search-clear:hover,
+.history-search-clear:focus-visible {
+  color: #eef6ff;
+  background: #162437;
+  border-color: #3f5674;
+  outline: none;
+}
+
 .history-search input,
 .history-time-filter select {
   width: 100%;

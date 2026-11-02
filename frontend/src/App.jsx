@@ -681,6 +681,11 @@ function TradeHistoryPage({ trades, error, loading }) {
   const [page, setPage] = useState(1);
   const pageSize = 8;
 
+  const handleClearSearch = useCallback(() => {
+    setSearch("");
+    setPage(1);
+  }, []);
+
   const filteredTrades = useMemo(() => {
     const query = search.trim().toLowerCase();
 
@@ -751,9 +756,10 @@ function TradeHistoryPage({ trades, error, loading }) {
           </div>
         )}
         <div className="history-toolbar">
-          <label className="history-search">
+          <label className="history-search" htmlFor="trade-history-search">
             <Search size={16} />
             <input
+              id="trade-history-search"
               type="search"
               value={search}
               placeholder="Search trade or order ID"
@@ -763,6 +769,17 @@ function TradeHistoryPage({ trades, error, loading }) {
               }}
               aria-label="Search trades by trade or order ID"
             />
+            {search && (
+              <button
+                type="button"
+                className="history-search-clear"
+                onClick={handleClearSearch}
+                aria-label="Clear trade search"
+                title="Clear search"
+              >
+                <X size={12} aria-hidden="true" />
+              </button>
+            )}
           </label>
         </div>
 
