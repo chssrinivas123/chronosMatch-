@@ -889,15 +889,111 @@ function HistorySummary({ label, value, Icon }) {
   );
 }
 
+function TradeDetailsPanel({ trade, onClose }) {
+  const [isOpen, setIsOpen] = useState(Boolean(trade));
+
+  useEffect(() => {
+    setIsOpen(Boolean(trade));
+  }, [trade]);
+
+  useEffect(() => {
+    if (!trade) return undefined;
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [onClose, trade]);
+
+  if (!trade || !isOpen) return null;
+
+  const executionPrice = Number(trade.price);
+  const quantity = Number(trade.quantity);
+  const tradeValue = executionPrice * quantity;
+
+  return (
+    <div className="trade-details-backdrop" onClick={onClose}>
+      <aside
+        className="trade-details-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="trade-details-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="trade-details-header">
+          <div>
+            <div className="eyebrow">TRADE DETAILS</div>
+            <h3 id="trade-details-title">Trade #{formatNumber(trade.trade_id)}</h3>
+          </div>
+          <button
+            type="button"
+            className="trade-details-close"
+            onClick={onClose}
+            aria-label="Close trade details"
+            title="Close"
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        </header>
+
+        <div className="trade-details-meta">
+          <CopyTradeIdButton tradeId={trade.trade_id} />
+        </div>
+
+        <dl className="trade-details-list">
+          <div className="trade-detail-row">
+            <dt>Trade ID</dt>
+            <dd>{formatNumber(trade.trade_id)}</dd>
+          </div>
+          <div className="trade-detail-row">
+            <dt>Buy Order ID</dt>
+            <dd>{formatNumber(trade.buy_order_id)}</dd>
+          </div>
+          <div className="trade-detail-row">
+            <dt>Sell Order ID</dt>
+            <dd>{formatNumber(trade.sell_order_id)}</dd>
+          </div>
+          <div className="trade-detail-row">
+            <dt>Execution price</dt>
+            <dd>{formatPrice(executionPrice)}</dd>
+          </div>
+          <div className="trade-detail-row">
+            <dt>Executed quantity</dt>
+            <dd>{formatNumber(quantity)}</dd>
+          </div>
+          <div className="trade-detail-row">
+            <dt>Trade value</dt>
+            <dd>{formatPrice(tradeValue)}</dd>
+          </div>
+          <div className="trade-detail-row">
+            <dt>Execution status</dt>
+            <dd><span className="status-badge status-executed">Executed</span></dd>
+          </div>
+        </dl>
+      </aside>
+    </div>
+  );
+}
+
 function TradeHistoryPage({ trades, error, loading }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [selectedTradeId, setSelectedTradeId] = useState(null);
   const pageSize = 8;
 
   const handleClearSearch = useCallback(() => {
     setSearch("");
     setPage(1);
   }, []);
+
+  const selectedTrade = useMemo(
+    () => trades.find((trade) => trade.trade_id === selectedTradeId) ?? null,
+    [selectedTradeId, trades]
+  );
 
   const filteredTrades = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -975,6 +1071,8 @@ function TradeHistoryPage({ trades, error, loading }) {
 
   return (
     <>
+      <TradeDetailsPanel trade={selectedTrade} onClose={() => setSelectedTradeId(null)} />
+
       <div className="titleline">
         <div>
           <div className="eyebrow">MARKET OPERATIONS · SESSION 001</div>
@@ -1071,7 +1169,14 @@ function TradeHistoryPage({ trades, error, loading }) {
                 <tr key={trade.trade_id}>
                   <td className="trade-id-cell">
                     <div className="trade-id-value">
-                      <span className="trade-id">{formatNumber(trade.trade_id)}</span>
+                      <button
+                        type="button"
+                        className="trade-id-button"
+                        onClick={() => setSelectedTradeId(trade.trade_id)}
+                        aria-label={`View details for trade ${trade.trade_id}`}
+                      >
+                        <span className="trade-id">{formatNumber(trade.trade_id)}</span>
+                      </button>
                       <CopyTradeIdButton tradeId={trade.trade_id} />
                     </div>
                   </td>
