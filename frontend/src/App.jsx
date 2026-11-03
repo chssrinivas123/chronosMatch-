@@ -181,6 +181,14 @@ function formatPrice(value) {
   return value == null ? "—" : currencyFormatter.format(Number(value));
 }
 
+function getTradeExecutionStatus(trade) {
+  const rawStatus = trade?.status;
+  if (typeof rawStatus === "string" && rawStatus.trim()) {
+    return rawStatus.trim();
+  }
+  return "Executed";
+}
+
 function escapeCsvCell(value) {
   const stringValue = value == null ? "" : String(value);
   return /[",\n\r]/.test(stringValue)
@@ -914,6 +922,8 @@ function TradeDetailsPanel({ trade, onClose }) {
   const executionPrice = Number(trade.price);
   const quantity = Number(trade.quantity);
   const tradeValue = executionPrice * quantity;
+  const executionStatus = getTradeExecutionStatus(trade);
+  const normalizedStatusClass = executionStatus.toLowerCase().replace(/\s+/g, "-");
 
   return (
     <div className="trade-details-backdrop" onClick={onClose}>
@@ -962,16 +972,20 @@ function TradeDetailsPanel({ trade, onClose }) {
             <dd>{formatPrice(executionPrice)}</dd>
           </div>
           <div className="trade-detail-row">
-            <dt>Executed quantity</dt>
+            <dt>Quantity</dt>
             <dd>{formatNumber(quantity)}</dd>
           </div>
           <div className="trade-detail-row">
-            <dt>Trade value</dt>
+            <dt>Total trade value</dt>
             <dd>{formatPrice(tradeValue)}</dd>
           </div>
           <div className="trade-detail-row">
             <dt>Execution status</dt>
-            <dd><span className="status-badge status-executed">Executed</span></dd>
+            <dd>
+              <span className={`status-badge status-${normalizedStatusClass}`}>
+                {executionStatus}
+              </span>
+            </dd>
           </div>
         </dl>
       </aside>
@@ -1026,6 +1040,7 @@ function TradeHistoryPage({ trades, error, loading }) {
       ...filteredTrades.map((trade) => {
         const executionPrice = Number(trade.price);
         const quantity = Number(trade.quantity);
+        const executionStatus = getTradeExecutionStatus(trade);
 
         return [
           trade.trade_id,
@@ -1033,7 +1048,7 @@ function TradeHistoryPage({ trades, error, loading }) {
           trade.sell_order_id,
           currencyFormatter.format(executionPrice),
           quantity,
-          "Executed",
+          executionStatus,
           currencyFormatter.format(executionPrice * quantity),
         ];
       }),
@@ -1058,6 +1073,12 @@ function TradeHistoryPage({ trades, error, loading }) {
     1,
     Math.ceil(filteredTrades.length / pageSize)
   );
+
+  useEffect(() => {
+    if (page > pageCount) {
+      setPage(pageCount);
+    }
+  }, [page, pageCount]);
 
   const visibleTrades = filteredTrades.slice(
     (page - 1) * pageSize,
@@ -1165,28 +1186,37 @@ function TradeHistoryPage({ trades, error, loading }) {
               </tr>
             </thead>
             <tbody>
-              {visibleTrades.map((trade) => (
-                <tr key={trade.trade_id}>
-                  <td className="trade-id-cell">
-                    <div className="trade-id-value">
-                      <button
-                        type="button"
-                        className="trade-id-button"
-                        onClick={() => setSelectedTradeId(trade.trade_id)}
-                        aria-label={`View details for trade ${trade.trade_id}`}
-                      >
-                        <span className="trade-id">{formatNumber(trade.trade_id)}</span>
-                      </button>
-                      <CopyTradeIdButton tradeId={trade.trade_id} />
-                    </div>
-                  </td>
-                  <td className="trade-order-id">{formatNumber(trade.buy_order_id)}</td>
-                  <td className="trade-order-id">{formatNumber(trade.sell_order_id)}</td>
-                  <td className="trade-price numeric">{formatPrice(trade.price)}</td>
-                  <td className="numeric">{formatNumber(trade.quantity)}</td>
-                  <td><span className="status-badge status-executed">Executed</span></td>
-                </tr>
-              ))}
+              {visibleTrades.map((trade) => {
+                const executionStatus = getTradeExecutionStatus(trade);
+                const normalizedStatusClass = executionStatus.toLowerCase().replace(/\s+/g, "-");
+
+                return (
+                  <tr key={trade.trade_id}>
+                    <td className="trade-id-cell">
+                      <div className="trade-id-value">
+                        <button
+                          type="button"
+                          className="trade-id-button"
+                          onClick={() => setSelectedTradeId(trade.trade_id)}
+                          aria-label={`View details for trade ${trade.trade_id}`}
+                        >
+                          <span className="trade-id">{formatNumber(trade.trade_id)}</span>
+                        </button>
+                        <CopyTradeIdButton tradeId={trade.trade_id} />
+                      </div>
+                    </td>
+                    <td className="trade-order-id">{formatNumber(trade.buy_order_id)}</td>
+                    <td className="trade-order-id">{formatNumber(trade.sell_order_id)}</td>
+                    <td className="trade-price numeric">{formatPrice(trade.price)}</td>
+                    <td className="numeric">{formatNumber(trade.quantity)}</td>
+                    <td>
+                      <span className={`status-badge status-${normalizedStatusClass}`}>
+                        {executionStatus}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 
