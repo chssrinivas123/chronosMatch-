@@ -77,7 +77,7 @@ function useChronosApi() {
   const controller = useRef(null);
 
   const refresh = useCallback(async (force = true) => {
-    if (controller.current && !force) return;
+    if (controller.current && !force) return false;
 
     controller.current?.abort();
     const requestController = new AbortController();
@@ -116,7 +116,7 @@ function useChronosApi() {
         throw new Error("The backend returned invalid dashboard data.");
       }
 
-      if (currentRequestId !== requestId.current) return;
+      if (currentRequestId !== requestId.current) return false;
       setData({
         metrics,
         orderBook,
@@ -126,12 +126,13 @@ function useChronosApi() {
         refreshing: false,
         error: "",
       });
+      return true;
     } catch (error) {
       if (
         currentRequestId !== requestId.current ||
         (error instanceof Error && error.name === "AbortError")
       ) {
-        return;
+        return false;
       }
       setData((previous) => ({
         ...previous,
@@ -139,6 +140,7 @@ function useChronosApi() {
         refreshing: false,
         error: "Could not refresh API data.",
       }));
+      return false;
     } finally {
       if (currentRequestId === requestId.current) {
         controller.current = null;
@@ -1394,6 +1396,39 @@ export default function App() {
   const [range, setRange] = useState("1H");
   const [nav, setNav] = useState("Overview");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [manualRefreshMessage, setManualRefreshMessage] = useState({
+    type: "",
+    text: "",
+  });
+  const refreshMessageTimeoutRef = useRef(null);
+
+  const handleManualRefresh = useCallback(async () => {
+    if (api.refreshing) {
+      return;
+    }
+
+    if (refreshMessageTimeoutRef.current) {
+      window.clearTimeout(refreshMessageTimeoutRef.current);
+    }
+
+    const didRefresh = await api.refresh();
+    const nextMessage = didRefresh
+      ? { type: "success", text: "Dashboard refreshed successfully." }
+      : { type: "error", text: "Refresh failed. Showing the last available data." };
+
+    setManualRefreshMessage(nextMessage);
+    refreshMessageTimeoutRef.current = window.setTimeout(() => {
+      setManualRefreshMessage({ type: "", text: "" });
+    }, 2200);
+  }, [api]);
+
+  useEffect(() => {
+    return () => {
+      if (refreshMessageTimeoutRef.current) {
+        window.clearTimeout(refreshMessageTimeoutRef.current);
+      }
+    };
+  }, []);
 
   let pageContent;
 
@@ -1472,121 +1507,161 @@ export default function App() {
   }
 
   return (
-    <div className="layout">
-      {mobileNavOpen && (
-        <button
-          className="mobile-backdrop"
-          aria-label="Close navigation"
-          onClick={() => setMobileNavOpen(false)}
-        />
-      )}
-
-      <aside className={`sidebar ${mobileNavOpen ? "mobile-open" : ""}`}>
-        <div className="brand">
-          <div className="brandicon"><Activity /></div>
-          <div>
-            <b>Chronos<span>Match</span></b>
-            <small>TRADING SIMULATOR</small>
-          </div>
-        </div>
-
-        <button
-          className="mobile-nav-close"
-          aria-label="Close navigation"
-          onClick={() => setMobileNavOpen(false)}
-        >
-          <X size={18} />
-        </button>
-
-        <label>WORKSPACE</label>
-        {navigation.slice(0, 4).map(([Icon, name]) => (
+    <>
+      <style>{`@keyframes chronos-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <div className="layout">
+        {mobileNavOpen && (
           <button
-            key={name}
-            className={`nav ${nav === name ? "active" : ""}`}
-            aria-current={nav === name ? "page" : undefined}
-            onClick={() => {
-              setNav(name);
-              setMobileNavOpen(false);
-            }}
-          >
-            <Icon size={18} />{name}
-          </button>
-        ))}
+            className="mobile-backdrop"
+            aria-label="Close navigation"
+            onClick={() => setMobileNavOpen(false)}
+          />
+        )}
 
-        <div className="side-rule" />
-        <label>SYSTEM</label>
-        {navigation.slice(4).map(([Icon, name]) => (
-          <button
-            key={name}
-            className={`nav ${nav === name ? "active" : ""}`}
-            aria-current={nav === name ? "page" : undefined}
-            onClick={() => {
-              setNav(name);
-              setMobileNavOpen(false);
-            }}
-          >
-            <Icon size={18} />{name}
-            {name === "System Health" && (
-              <i className={`dot ${api.error ? "yellow" : ""}`} />
-            )}
-          </button>
-        ))}
-
-        <div className="sidebottom">
-          <div className="help">
-            <ShieldCheck />
-            <b>Safe demo environment</b>
-            <p>Mock orders only. No real exchange connection.</p>
-          </div>
-          <div className="profile">
-            <div className="avatar">S</div>
+        <aside className={`sidebar ${mobileNavOpen ? "mobile-open" : ""}`}>
+          <div className="brand">
+            <div className="brandicon"><Activity /></div>
             <div>
-              <b>Solo Developer</b>
-              <small>Local workspace</small>
+              <b>Chronos<span>Match</span></b>
+              <small>TRADING SIMULATOR</small>
             </div>
           </div>
-        </div>
-      </aside>
 
-      <main>
-        <header className="topbar">
           <button
-            className="mobile-menu"
-            aria-label="Open navigation"
-            aria-expanded={mobileNavOpen}
-            onClick={() => setMobileNavOpen(true)}
+            className="mobile-nav-close"
+            aria-label="Close navigation"
+            onClick={() => setMobileNavOpen(false)}
           >
-            <Menu size={18} />
+            <X size={18} />
           </button>
-          <div className="crumb">Workspace <span>/</span> {nav}</div>
-          <div className="topright">
-            <span className="sample">
-              <i />
-              {api.refreshing
-                ? "REFRESHING"
-                : api.error
-                  ? api.metrics
-                    ? "REFRESH FAILED"
-                    : "BACKEND OFFLINE"
-                  : "API DATA"}
-            </span>
-            <button
-              title={
-                api.error ? "Refresh failed. Try again." : "Refresh API data"
-              }
-              aria-label="Refresh API data"
-              aria-busy={api.refreshing}
-              onClick={() => api.refresh()}
-              className="refresh-button"
-            >
-              <RefreshCw size={18} />
-            </button>
-            <div className="avatar">S</div>
-          </div>
-        </header>
 
-        <div className="content">{pageContent}</div>
-      </main>
-    </div>
+          <label>WORKSPACE</label>
+          {navigation.slice(0, 4).map(([Icon, name]) => (
+            <button
+              key={name}
+              className={`nav ${nav === name ? "active" : ""}`}
+              aria-current={nav === name ? "page" : undefined}
+              onClick={() => {
+                setNav(name);
+                setMobileNavOpen(false);
+              }}
+            >
+              <Icon size={18} />{name}
+            </button>
+          ))}
+
+          <div className="side-rule" />
+          <label>SYSTEM</label>
+          {navigation.slice(4).map(([Icon, name]) => (
+            <button
+              key={name}
+              className={`nav ${nav === name ? "active" : ""}`}
+              aria-current={nav === name ? "page" : undefined}
+              onClick={() => {
+                setNav(name);
+                setMobileNavOpen(false);
+              }}
+            >
+              <Icon size={18} />{name}
+              {name === "System Health" && (
+                <i className={`dot ${api.error ? "yellow" : ""}`} />
+              )}
+            </button>
+          ))}
+
+          <div className="sidebottom">
+            <div className="help">
+              <ShieldCheck />
+              <b>Safe demo environment</b>
+              <p>Mock orders only. No real exchange connection.</p>
+            </div>
+            <div className="profile">
+              <div className="avatar">S</div>
+              <div>
+                <b>Solo Developer</b>
+                <small>Local workspace</small>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <main>
+          <header className="topbar">
+            <button
+              className="mobile-menu"
+              aria-label="Open navigation"
+              aria-expanded={mobileNavOpen}
+              onClick={() => setMobileNavOpen(true)}
+            >
+              <Menu size={18} />
+            </button>
+            <div className="crumb">Workspace <span>/</span> {nav}</div>
+            <div className="topright">
+              <span className="sample">
+                <i />
+                {api.refreshing
+                  ? "REFRESHING"
+                  : api.error
+                    ? api.metrics
+                      ? "REFRESH FAILED"
+                      : "BACKEND OFFLINE"
+                    : "API DATA"}
+              </span>
+              {manualRefreshMessage.text && (
+                <div
+                  className={`refresh-message ${manualRefreshMessage.type}`}
+                  aria-live="polite"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    padding: "5px 8px",
+                    borderRadius: 6,
+                    fontSize: 10,
+                    letterSpacing: "0.8px",
+                    border: manualRefreshMessage.type === "success"
+                      ? "1px solid rgba(84, 214, 168, 0.35)"
+                      : "1px solid rgba(242, 138, 155, 0.35)",
+                    background: manualRefreshMessage.type === "success"
+                      ? "rgba(16, 46, 38, 0.9)"
+                      : "rgba(52, 24, 31, 0.9)",
+                    color: manualRefreshMessage.type === "success"
+                      ? "#7ce8c1"
+                      : "#f7a6b2",
+                  }}
+                >
+                  {manualRefreshMessage.text}
+                </div>
+              )}
+              <button
+                title={
+                  api.error ? "Refresh failed. Try again." : "Refresh API data"
+                }
+                aria-label="Refresh API data"
+                aria-busy={api.refreshing}
+                onClick={handleManualRefresh}
+                className="refresh-button"
+                disabled={api.refreshing}
+                style={{
+                  opacity: api.refreshing ? 0.7 : 1,
+                  cursor: api.refreshing ? "not-allowed" : "pointer",
+                }}
+              >
+                <RefreshCw
+                  size={18}
+                  style={
+                    api.refreshing
+                      ? { animation: "chronos-spin 1s linear infinite" }
+                      : undefined
+                  }
+                />
+              </button>
+              <div className="avatar">S</div>
+            </div>
+          </header>
+
+          <div className="content">{pageContent}</div>
+        </main>
+      </div>
+    </>
   );
 }
