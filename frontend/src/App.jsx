@@ -19,6 +19,7 @@ import {
   Database,
   Download,
   Gauge,
+  Inbox,
   LayoutDashboard,
   Menu,
   Pause,
@@ -414,7 +415,7 @@ function OrderBookPanel({ orderBook, error, loading }) {
     ...visibleBids.map((order) => order.quantity),
     ...visibleAsks.map((order) => order.quantity)
   );
-  const hasOrders = visibleBids.length > 0 || visibleAsks.length > 0;
+  const hasOrders = bids.length > 0 || asks.length > 0;
   const rowCount = hasOrders
     ? Math.max(5, visibleBids.length, visibleAsks.length)
     : 0;
@@ -514,8 +515,11 @@ function OrderBookPanel({ orderBook, error, loading }) {
 
       {orderBook && !hasOrders && (
         <div className="history-empty orderbook-state">
-          <b>Order book is empty</b>
-          <p>Submit an order to populate the BUY or SELL side.</p>
+          <div className="orderbook-empty-icon" aria-hidden="true">
+            <Inbox size={18} />
+          </div>
+          <b>No active orders yet.</b>
+          <p>Orders will appear here when submitted.</p>
         </div>
       )}
 

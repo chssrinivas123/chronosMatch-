@@ -578,6 +578,24 @@
 .bookrow .size i { z-index: 0; }
 .orderbook-state { padding: 22px 12px; }
 
+.orderbook-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 2px;
+  color: #7ad8bc;
+  background: #16372f;
+  border: 1px solid #285549;
+  border-radius: 9px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.orderbook-empty-icon svg {
+  display: block;
+  stroke-width: 1.9;
+}
+
 @media (max-width: 850px) {
   .history-summaries { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
